@@ -8,14 +8,38 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var session = SessionStore()
+    @StateObject private var enterpriseStore = EnterpriseStore()
+    @StateObject private var onboardingStore = OnboardingStore()
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if !session.isLoggedIn {
+                LoginView()
+                    .environmentObject(session)
+                    .environmentObject(enterpriseStore)
+                    .environmentObject(onboardingStore)
+            } else if session.shouldShowInvitation {
+                PendingEnterpriseView()
+                    .environmentObject(session)
+                    .environmentObject(enterpriseStore)
+                    .environmentObject(onboardingStore)
+            } else if !session.isOnboardingComplete {
+                OnboardingView()
+                    .environmentObject(session)
+                    .environmentObject(enterpriseStore)
+                    .environmentObject(onboardingStore)
+            } else {
+                MainTabView()
+                    .environmentObject(session)
+                    .environmentObject(enterpriseStore)
+                    .environmentObject(onboardingStore)
+            }
         }
-        .padding()
+        .task {
+            // Restaurer la session Supabase au démarrage
+            await session.restoreSession()
+        }
     }
 }
 
