@@ -10,6 +10,33 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var session: SessionStore
     
+    // Logique de fallback pour afficher l'email complet
+    private var displayLogin: String {
+        // Priorité 1: profile.email (email complet depuis profiles)
+        if let email = session.profile?.email, !email.isEmpty {
+            #if DEBUG
+            print("[PROFILE_DEBUG] profile.email=\(email)")
+            #endif
+            return email
+        }
+        // Priorité 2: auth.user.email (email complet depuis auth)
+        if let authEmail = session.currentUserEmail, !authEmail.isEmpty {
+            #if DEBUG
+            print("[PROFILE_DEBUG] auth.email=\(authEmail)")
+            #endif
+            return authEmail
+        }
+        // Priorité 3: profile.username (si disponible)
+        if let username = session.profile?.username, !username.isEmpty {
+            #if DEBUG
+            print("[PROFILE_DEBUG] profile.username=\(username)")
+            #endif
+            return username
+        }
+        // Priorité 4: fallback générique
+        return "Compte utilisateur"
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -27,7 +54,7 @@ struct SettingsView: View {
                         } label: {
                             CarbyoRowLink(
                                 title: "Mon compte",
-                                subtitle: session.profile?.pseudo ?? "Non renseigné",
+                                subtitle: displayLogin,
                                 systemIcon: "person.circle",
                                 accent: CarbyoColors.primary
                             )

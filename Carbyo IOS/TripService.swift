@@ -20,67 +20,65 @@ final class TripService {
     // Note: On ne peut pas utiliser un type de retour explicite pour le builder,
     // donc on duplique les filtres communs dans chaque méthode pour garantir la cohérence
     
-    // MARK: - Calcul du total CO₂ pour le mois courant
+    // MARK: - Helpers pour les dates (Postgres DATE format)
     
-    func fetchPersonalCO2ThisMonth() async throws -> (total: Double, tripCount: Int) {
-        print("[COCKPIT] fetchPersonalCO2ThisMonth start")
-        
-        // Récupérer l'utilisateur courant
-        let session = try await client.auth.session
-        let userId = session.user.id
-        
-        // Calculer le premier et dernier jour du mois courant
+    private func formatDateForPostgres(_ date: Date) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        return df.string(from: date)
+    }
+    
+    private func monthRangeUTC(for date: Date) throws -> (start: String, end: String) {
         let calendar = Calendar.current
-        let now = Date()
-        
-        // Premier jour du mois (début à minuit)
-        guard let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) else {
+        guard let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {
             throw NSError(domain: "DateError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Impossible de calculer le début du mois"])
         }
-        
-        // Dernier jour du mois (fin du mois, pas le début du mois suivant)
         guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth),
               let endOfMonth = calendar.date(byAdding: .day, value: -1, to: nextMonth) else {
             throw NSError(domain: "DateError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Impossible de calculer la fin du mois"])
         }
+        return (start: formatDateForPostgres(startOfMonth), end: formatDateForPostgres(endOfMonth))
+    }
+    
+    // MARK: - Calcul du total CO₂ pour le mois courant
+    
+    /// Calcule la date de début du mois courant au format 'yyyy-MM-dd' en UTC
+    private func getCurrentMonthStartISO() -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) else {
+            // Fallback sur aujourd'hui si calcul impossible (ne devrait jamais arriver)
+            return formatDateForPostgres(now)
+        }
         
-        // Formater les dates STRICTEMENT au format 'yyyy-MM-dd' (String) pour PostgreSQL DATE
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // UTC pour éviter les problèmes de fuseau horaire
-        let startOfMonthString = dateFormatter.string(from: startOfMonth)
-        let endOfMonthString = dateFormatter.string(from: endOfMonth)
+        // Utiliser la même fonction helper pour cohérence
+        return formatDateForPostgres(startOfMonth)
+    }
+    
+    func fetchPersonalCO2ThisMonth() async throws -> (total: Double, tripCount: Int) {
+        print("[COCKPIT] fetchPersonalCO2ThisMonth start")
         
-        // Tronquer l'UID pour les logs
-        let userIdString = userId.uuidString
-        let truncatedUID = String(userIdString.prefix(8))
+        // Calculer uniquement le début du mois courant (mois civil)
+        // Pas de date de fin - on récupère tous les trips depuis le début du mois jusqu'à aujourd'hui
+        let monthStart = getCurrentMonthStartISO()
         
-        print("[COCKPIT] User ID (truncated): \(truncatedUID)...")
-        print("[COCKPIT] Period: startDateString='\(startOfMonthString)' / endDateString='\(endOfMonthString)'")
+        print("[COCKPIT] Period: monthStart='\(monthStart)' (no end date - implicit today)")
         
-        // REUTILISER LA MÊME LOGIQUE QUE fetchPersonalTrips (select complet pour éviter erreur Decodable)
-        // Filtres: user_id + type_trajet='perso' + trip_date entre startOfMonth et endOfMonth (inclus)
+        // Utiliser fetchPersonalTrips avec seulement startDate (pas de endDate)
+        // Cela applique uniquement .gte() sans .lte()
         do {
-            // Même select complet que fetchPersonalTrips pour décoder correctement dans Trip
-            let trips: [Trip] = try await client
-                .from("trips")
-                .select("id, user_id, vehicle_id, trip_date, origin_address, destination_address, distance_km, co2_emissions_kg, transport_mode, type_trajet, created_at, vehicles(id, owner_id, registration, brand, model, energy, v7_emissions, consumption_per_100km)")
-                .eq("user_id", value: userId.uuidString)
-                .eq("type_trajet", value: "perso")
-                .gte("trip_date", value: startOfMonthString)
-                .lte("trip_date", value: endOfMonthString)
-                .order("trip_date", ascending: false)
-                .execute()
-                .value
+            let trips = try await fetchPersonalTrips(startDate: monthStart, endDate: nil)
             
-            print("[COCKPIT] nb trips: \(trips.count)")
-            
-            // Calculer localement: COUNT(trips) et SUM(co2_emissions_kg)
+            // Calculer localement: COUNT(trips) et SUM(co2_emissions_kg) sans arrondi intermédiaire
             let totalTrips = trips.count
             let totalCO2 = trips.reduce(0.0) { sum, trip in
                 sum + (trip.co2_emissions_kg ?? 0.0)
             }
+            
+            // Log debug aligné avec Lovable spec
+            print("[COCKPIT_DEBUG] monthStart=\(monthStart) trips=\(totalTrips) totalCO2=\(String(format: "%.2f", totalCO2))")
             
             print("[COCKPIT] totalCO2 calculé: \(String(format: "%.2f", totalCO2)) kg")
             print("[COCKPIT] ✅ Successfully calculated CO₂ for \(totalTrips) trips")
@@ -92,7 +90,7 @@ final class TripService {
         }
     }
     
-    func fetchPersonalTrips() async throws -> [Trip] {
+    func fetchPersonalTrips(startDate: String? = nil, endDate: String? = nil) async throws -> [Trip] {
         print("[CO2] fetchPersonalTrips start")
         
         // Récupérer l'utilisateur courant
@@ -102,14 +100,26 @@ final class TripService {
         
         // Requête Supabase avec jointure véhicule
         do {
-            // Récupérer les trips avec jointure véhicule
-            // Filtres communs: user_id et type_trajet = "perso" (identique à fetchPersonalCO2ThisMonth)
-            var trips: [Trip] = try await client
+            // Construire la requête de base avec filtres communs
+            var query = client
                 .from("trips")
                 .select("id, user_id, vehicle_id, trip_date, origin_address, destination_address, distance_km, co2_emissions_kg, transport_mode, type_trajet, created_at, vehicles(id, owner_id, registration, brand, model, energy, v7_emissions, consumption_per_100km)")
                 .eq("user_id", value: userId.uuidString)
                 .eq("type_trajet", value: "perso")
+            
+            // Ajouter les filtres de date indépendamment (startDate et/ou endDate)
+            if let startDate = startDate {
+                query = query.gte("trip_date", value: startDate)
+            }
+            if let endDate = endDate {
+                query = query.lte("trip_date", value: endDate)
+            }
+            
+            // Récupérer les trips avec jointure véhicule
+            // Filtres communs: user_id et type_trajet = "perso" (identique à fetchPersonalCO2ThisMonth)
+            var trips: [Trip] = try await query
                 .order("trip_date", ascending: false)
+                .order("created_at", ascending: false)
                 .execute()
                 .value
             
@@ -147,6 +157,12 @@ final class TripService {
                     }
                 }
             }
+            
+            // Log debug avec range si fourni
+            if let startDate = startDate, let endDate = endDate {
+                print("[LIST_DEBUG] range=\(startDate)..\(endDate) count=\(trips.count) sumCO2=\(String(format: "%.2f", totalCO2))")
+            }
+            
             print("[CO2] Total CO₂: \(String(format: "%.2f", totalCO2)) kg")
             print("[CO2] ✅ Successfully fetched \(trips.count) personal trips")
             

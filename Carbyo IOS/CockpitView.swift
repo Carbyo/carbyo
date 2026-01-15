@@ -111,27 +111,6 @@ struct CockpitView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
                     
-                    // Bouton: Enregistrer rapidement un trajet
-                    Button {
-                        // TODO: Navigation vers déclaration de trajet
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                            Text("Enregistrer rapidement un trajet")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(CarbyoColors.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-                    }
-                    .padding(.horizontal, 16)
-                    
                     // Sélecteur d'onglet
                     Picker("", selection: $selectedTab) {
                         ForEach(CockpitTab.allCases, id: \.self) { tab in

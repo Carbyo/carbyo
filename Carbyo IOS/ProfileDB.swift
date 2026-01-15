@@ -11,14 +11,14 @@ import Foundation
 struct ProfileDB: Codable {
     let id: UUID
     let email: String
-    var pseudo: String?
+    var username: String?
     var onboarding_completed: Bool
     let created_at: String?
     
-    init(id: UUID, email: String, pseudo: String? = nil, onboarding_completed: Bool = false, created_at: String? = nil) {
+    init(id: UUID, email: String, username: String? = nil, onboarding_completed: Bool = false, created_at: String? = nil) {
         self.id = id
         self.email = email
-        self.pseudo = pseudo
+        self.username = username
         self.onboarding_completed = onboarding_completed
         self.created_at = created_at
     }

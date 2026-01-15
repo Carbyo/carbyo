@@ -12,7 +12,7 @@ struct ProfileOnboardingView: View {
     @EnvironmentObject var onboardingStore: OnboardingStore
     @Environment(\.dismiss) var dismiss
     
-    @State private var pseudo: String = ""
+    @State private var username: String = ""
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     
@@ -20,7 +20,7 @@ struct ProfileOnboardingView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Pseudo *", text: $pseudo)
+                    TextField("Pseudo *", text: $username)
                         .textInputAutocapitalization(.never)
                     
                     TextField("Prénom", text: $firstName)
@@ -39,12 +39,12 @@ struct ProfileOnboardingView: View {
                     Button("Enregistrer") {
                         saveProfile()
                     }
-                    .disabled(pseudo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .onAppear {
                 if let existingProfile = session.profile {
-                    pseudo = existingProfile.pseudo
+                    username = existingProfile.username
                     firstName = existingProfile.firstName ?? ""
                     lastName = existingProfile.lastName ?? ""
                 }
@@ -53,11 +53,11 @@ struct ProfileOnboardingView: View {
     }
     
     private func saveProfile() {
-        let trimmedPseudo = pseudo.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPseudo.isEmpty else { return }
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUsername.isEmpty else { return }
         
         session.profile = UserProfile(
-            pseudo: trimmedPseudo,
+            username: trimmedUsername,
             firstName: firstName.isEmpty ? nil : firstName.trimmingCharacters(in: .whitespacesAndNewlines),
             lastName: lastName.isEmpty ? nil : lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         )

@@ -10,6 +10,7 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject var session: SessionStore
     @State private var selectedTab: Int = 0
+    @State private var showQuickTrip: Bool = false
     
     var body: some View {
         ZStack {
@@ -33,8 +34,73 @@ struct MainTabView: View {
             VStack {
                 Spacer()
                 CustomTabBar(selectedTab: $selectedTab)
+                    .padding(.bottom, 0)
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
+            
+            // Floating Action Button (FAB) - centré au-dessus de la TabBar
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        showQuickTrip = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 64, height: 64)
+                            .background(Circle().fill(CarbyoColors.primary))
+                            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 4)
+                    }
+                    .accessibilityLabel("Ajouter un trajet")
+                    .padding(.bottom, 22) // Positionné au-dessus de la TabBar
+                    Spacer()
+                }
+            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+        }
+        .sheet(isPresented: $showQuickTrip) {
+            QuickTripCreateView()
+                .environmentObject(session)
+        }
+    }
+}
+
+// MARK: - Quick Trip Create View (Placeholder)
+struct QuickTripCreateView: View {
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var session: SessionStore
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(CarbyoColors.primary)
+                
+                Text("Enregistrer un trajet")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(CarbyoColors.text)
+                
+                Text("Cette fonctionnalité sera bientôt disponible")
+                    .font(.body)
+                    .foregroundColor(CarbyoColors.muted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(CarbyoColors.background)
+            .navigationTitle("Nouveau trajet")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Fermer") {
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }

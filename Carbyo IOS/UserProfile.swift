@@ -10,16 +10,16 @@ import Foundation
 struct UserProfile: Codable {
     var id: UUID?
     var email: String?
-    var pseudo: String
+    var username: String
     var firstName: String?
     var lastName: String?
     var vehicles: [Vehicle]
     var onboarding_completed: Bool
     
-    init(id: UUID? = nil, email: String? = nil, pseudo: String, firstName: String? = nil, lastName: String? = nil, vehicles: [Vehicle] = [], onboarding_completed: Bool = false) {
+    init(id: UUID? = nil, email: String? = nil, username: String, firstName: String? = nil, lastName: String? = nil, vehicles: [Vehicle] = [], onboarding_completed: Bool = false) {
         self.id = id
         self.email = email
-        self.pseudo = pseudo
+        self.username = username
         self.firstName = firstName
         self.lastName = lastName
         self.vehicles = vehicles
@@ -30,10 +30,17 @@ struct UserProfile: Codable {
     init(from profileDB: ProfileDB, vehicles: [Vehicle] = [], firstName: String? = nil, lastName: String? = nil) {
         self.id = profileDB.id
         self.email = profileDB.email
-        self.pseudo = profileDB.pseudo ?? profileDB.email.components(separatedBy: "@").first ?? "Utilisateur"
+        // Ne plus tronquer l'email - utiliser le username si disponible, sinon l'email complet
+        self.username = profileDB.username ?? profileDB.email
         self.firstName = firstName
         self.lastName = lastName
         self.vehicles = vehicles
         self.onboarding_completed = profileDB.onboarding_completed
+    }
+    
+    // Alias de compatibilité pour le code existant qui utilise .pseudo
+    var pseudo: String {
+        get { username }
+        set { username = newValue }
     }
 }

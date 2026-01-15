@@ -94,7 +94,7 @@ final class SessionStore: ObservableObject {
         }
         
         // Sinon, vérifier les conditions locales comme avant
-        guard !profile.pseudo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !profile.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
         
@@ -176,19 +176,20 @@ final class SessionStore: ObservableObject {
             let user = response.user
             
             // 2. Créer ou upsert le profil dans la table profiles
-            let pseudo = email.components(separatedBy: "@").first ?? "Utilisateur"
+            // Ne plus tronquer l'email - utiliser l'email complet comme username par défaut
+            let username = email
             
             struct ProfileInsert: Codable {
                 let id: String
                 let email: String
-                let pseudo: String?
+                let username: String?
                 let onboarding_completed: Bool
             }
             
             let insert = ProfileInsert(
                 id: user.id.uuidString,
                 email: email,
-                pseudo: pseudo,
+                username: username,
                 onboarding_completed: false
             )
             
@@ -213,9 +214,10 @@ final class SessionStore: ObservableObject {
     }
     
     func loadProfile(userId: UUID) async throws {
+        // Sélection explicite des colonnes nécessaires, notamment email et username
         let response: [ProfileDB] = try await supabase
             .from("profiles")
-            .select()
+            .select("id, email, username, onboarding_completed, created_at")
             .eq("id", value: userId.uuidString)
             .execute()
             .value
@@ -223,6 +225,11 @@ final class SessionStore: ObservableObject {
         guard let profileDB = response.first else {
             throw NSError(domain: "ProfileError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Profil introuvable"])
         }
+        
+        #if DEBUG
+        print("[PROFILE_DEBUG] profile.email=\(profileDB.email)")
+        print("[PROFILE_DEBUG] profile.username=\(profileDB.username ?? "nil")")
+        #endif
         
         // Charger les véhicules depuis la table vehicles si nécessaire
         // Pour l'instant, on garde la logique existante avec UserProfile.vehicles
@@ -306,7 +313,7 @@ final class SessionStore: ObservableObject {
     
     func addVehicle(_ vehicle: Vehicle) {
         if profile == nil {
-            profile = UserProfile(pseudo: "", vehicles: [])
+            profile = UserProfile(username: "", vehicles: [])
         }
         profile?.vehicles.append(vehicle)
     }
