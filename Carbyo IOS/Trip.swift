@@ -19,6 +19,7 @@ struct Trip: Codable, Identifiable {
     let transport_mode: String?
     let type_trajet: String? // "perso" (personnel) / "pro" (professionnel)
     let created_at: String? // timestamptz
+    let calculation_method: String?
     
     // Jointure véhicule (optionnel)
     let vehicles: VehicleDB?
@@ -35,7 +36,44 @@ struct Trip: Codable, Identifiable {
         case transport_mode
         case type_trajet
         case created_at
+        case calculation_method
         case vehicles
+    }
+    
+    // Propriété calculée pour formater la date en français court
+    var shortDateFR: String {
+        guard let dateString = trip_date else { return "" }
+        
+        // Parser la date au format "YYYY-MM-DD" (en_US_POSIX pour éviter les problèmes de locale)
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.timeZone = TimeZone(secondsFromGMT: 0)
+        
+        guard let date = parser.date(from: dateString) else {
+            return dateString
+        }
+        
+        // Formater pour l'affichage en français
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM yyyy"
+        formatter.locale = Locale(identifier: "fr_FR")
+        return formatter.string(from: date)
+    }
+}
+
+extension Trip {
+    var typeShort: String {
+        let t = (type_trajet ?? "").lowercased()
+        return t == "pro" ? "PRO" : "PERSO"
+    }
+    
+    var kmShort: String {
+        String(format: "%.1f", distance_km ?? 0) + " km"
+    }
+    
+    var co2Short: String {
+        String(format: "%.2f", co2_emissions_kg ?? 0) + " kg"
     }
 }
 

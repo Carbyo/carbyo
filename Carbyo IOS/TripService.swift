@@ -242,6 +242,48 @@ final class TripService {
             throw error
         }
     }
+    
+    // MARK: - Récupération de tous les trajets de l'utilisateur
+    
+    func fetchAllTrips(startDate: String? = nil, endDate: String? = nil) async throws -> [Trip] {
+        print("[TRIPS] fetchAllTrips start")
+        
+        // Récupérer l'utilisateur courant
+        let session = try await client.auth.session
+        let userId = session.user.id
+        print("[TRIPS] User ID: \(userId)")
+        
+        // Requête Supabase pour récupérer tous les trajets de l'utilisateur
+        do {
+            var query = client
+                .from("trips")
+                .select("id, trip_date, created_at, distance_km, co2_emissions_kg, origin_address, destination_address, type_trajet, transport_mode, calculation_method")
+                .eq("user_id", value: userId.uuidString)
+            
+            // Ajouter les filtres de date si fournis
+            if let startDate = startDate {
+                query = query.gte("trip_date", value: startDate)
+                print("[TRIPS] Filter: startDate=\(startDate)")
+            }
+            if let endDate = endDate {
+                query = query.lte("trip_date", value: endDate)
+                print("[TRIPS] Filter: endDate=\(endDate)")
+            }
+            
+            let trips: [Trip] = try await query
+                .order("trip_date", ascending: false)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            print("[TRIPS] ✅ Successfully loaded \(trips.count) trips")
+            
+            return trips
+        } catch {
+            print("[TRIPS] ❌ Error fetching all trips: \(error.localizedDescription)")
+            throw error
+        }
+    }
 }
 
 // MARK: - JSONDecoder Extension
