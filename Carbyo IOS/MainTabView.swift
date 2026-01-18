@@ -13,52 +13,22 @@ struct MainTabView: View {
     @State private var showQuickTrip: Bool = false
     
     var body: some View {
-        ZStack {
-            // Contenu de l'onglet sélectionné
-            Group {
-                if selectedTab == 0 {
-                    CockpitView()
-                        .environmentObject(session)
-                } else if selectedTab == 1 {
-                    TripsView()
-                } else if selectedTab == 2 {
-                    FriendsView()
-                } else if selectedTab == 3 {
-                    SettingsView()
-                        .environmentObject(session)
-                }
+        Group {
+            if selectedTab == 0 {
+                CockpitView()
+                    .environmentObject(session)
+            } else if selectedTab == 1 {
+                TripsView()
+            } else if selectedTab == 2 {
+                SettingsView()
+                    .environmentObject(session)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            
-            // TabBar custom compacte en bas
-            VStack {
-                Spacer()
-                CustomTabBar(selectedTab: $selectedTab)
-                    .padding(.bottom, 0)
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-            
-            // Floating Action Button (FAB) - centré au-dessus de la TabBar
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Button {
-                        showQuickTrip = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 64, height: 64)
-                            .background(Circle().fill(CarbyoColors.primary))
-                            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 4)
-                    }
-                    .accessibilityLabel("Ajouter un trajet")
-                    .padding(.bottom, 22) // Positionné au-dessus de la TabBar
-                    Spacer()
-                }
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom) {
+            CustomTabBar(selectedTab: $selectedTab, onAddTrip: {
+                showQuickTrip = true
+            })
         }
         .sheet(isPresented: $showQuickTrip) {
             QuickTripCreateView()
@@ -108,6 +78,7 @@ struct QuickTripCreateView: View {
 // MARK: - Custom Compact TabBar
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
+    let onAddTrip: () -> Void
     
     struct TabItem {
         let title: String
@@ -115,54 +86,81 @@ struct CustomTabBar: View {
         let tag: Int
     }
     
+    // Onglets : Cockpit, Mes trajets et Paramètres
     private let tabs: [TabItem] = [
         TabItem(title: "Cockpit", icon: "leaf.fill", tag: 0),
         TabItem(title: "Mes trajets", icon: "figure.walk", tag: 1),
-        TabItem(title: "Mes amis", icon: "person.2.fill", tag: 2),
-        TabItem(title: "Paramètres", icon: "gearshape.fill", tag: 3)
+        TabItem(title: "Paramètres", icon: "gearshape", tag: 2)
     ]
     
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs, id: \.tag) { tab in
-                Button {
-                    selectedTab = tab.tag
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(selectedTab == tab.tag ? CarbyoColors.primary : Color.gray)
-                        
-                        Text(tab.title)
-                            .font(.caption2)
-                            .foregroundColor(selectedTab == tab.tag ? CarbyoColors.primary : Color.gray.opacity(0.85))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 30)
-                    .background(
-                        Group {
-                            if selectedTab == tab.tag {
-                                RoundedRectangle(cornerRadius: 15)
-                                    .fill(CarbyoColors.primarySoft)
-                                    .frame(height: 30)
+        ZStack(alignment: .bottom) {
+            // Fond du footer
+            HStack(spacing: 0) {
+                // Boutons de navigation à gauche
+                HStack(spacing: 6) {
+                    ForEach(tabs, id: \.tag) { tab in
+                        Button {
+                            selectedTab = tab.tag
+                        } label: {
+                            VStack(spacing: 3) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(selectedTab == tab.tag ? CarbyoColors.primary : Color.gray)
+                                
+                                Text(tab.title)
+                                    .font(.caption2)
+                                    .foregroundColor(selectedTab == tab.tag ? CarbyoColors.primary : Color.gray.opacity(0.85))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
                             }
+                            .frame(height: 44)
+                            .padding(.horizontal, 8)
+                            .background(
+                                Group {
+                                    if selectedTab == tab.tag {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(CarbyoColors.primarySoft)
+                                    }
+                                }
+                            )
                         }
-                    )
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.leading, 12)
+                
+                Spacer(minLength: 60) // Espace minimum pour le bouton +
+            }
+            .frame(height: 56)
+            .background(CarbyoColors.surface)
+            .overlay(
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(CarbyoColors.border),
+                alignment: .top
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -2)
+            
+            // Bouton "+" positionné absolument à droite, légèrement plus bas
+            HStack {
+                Spacer()
+                Button {
+                    onAddTrip()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(CarbyoColors.primary))
+                        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
+                }
+                .accessibilityLabel("Ajouter un trajet")
+                .offset(y: -4) // Légèrement plus bas pour éviter le chevauchement
+                .padding(.trailing, 16)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .frame(height: 50)
-        .background(CarbyoColors.surface)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(CarbyoColors.border),
-            alignment: .top
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -2)
+        .frame(height: 56)
     }
 }
 

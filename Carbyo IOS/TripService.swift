@@ -57,7 +57,29 @@ final class TripService {
         return formatDateForPostgres(startOfMonth)
     }
     
-    func fetchPersonalCO2ThisMonth() async throws -> (total: Double, tripCount: Int) {
+    /// Calcule la date de début et de fin du mois précédent au format 'yyyy-MM-dd' en UTC
+    private func getPreviousMonthRangeISO() -> (start: String, end: String) {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Calculer le début du mois précédent
+        guard let startOfCurrentMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)),
+              let startOfPreviousMonth = calendar.date(byAdding: .month, value: -1, to: startOfCurrentMonth) else {
+            // Fallback sur aujourd'hui si calcul impossible
+            let fallback = formatDateForPostgres(now)
+            return (start: fallback, end: fallback)
+        }
+        
+        // Calculer la fin du mois précédent (dernier jour du mois précédent)
+        guard let endOfPreviousMonth = calendar.date(byAdding: .day, value: -1, to: startOfCurrentMonth) else {
+            let fallback = formatDateForPostgres(now)
+            return (start: formatDateForPostgres(startOfPreviousMonth), end: fallback)
+        }
+        
+        return (start: formatDateForPostgres(startOfPreviousMonth), end: formatDateForPostgres(endOfPreviousMonth))
+    }
+    
+    func fetchPersonalCO2ThisMonth() async throws -> (total: Double, tripCount: Int, distanceKm: Double) {
         print("[COCKPIT] fetchPersonalCO2ThisMonth start")
         
         // Calculer uniquement le début du mois courant (mois civil)
@@ -71,32 +93,64 @@ final class TripService {
         do {
             let trips = try await fetchPersonalTrips(startDate: monthStart, endDate: nil)
             
-            // Calculer localement: COUNT(trips) et SUM(co2_emissions_kg) sans arrondi intermédiaire
+            // Calculer localement: COUNT(trips), SUM(co2_emissions_kg) et SUM(distance_km) sans arrondi intermédiaire
             let totalTrips = trips.count
             let totalCO2 = trips.reduce(0.0) { sum, trip in
                 sum + (trip.co2_emissions_kg ?? 0.0)
             }
+            let totalDistance = trips.reduce(0.0) { sum, trip in
+                sum + (trip.distance_km ?? 0.0)
+            }
             
             // Log debug aligné avec Lovable spec
-            print("[COCKPIT_DEBUG] monthStart=\(monthStart) trips=\(totalTrips) totalCO2=\(String(format: "%.2f", totalCO2))")
+            print("[COCKPIT_DEBUG] monthStart=\(monthStart) trips=\(totalTrips) totalCO2=\(String(format: "%.2f", totalCO2)) distanceKm=\(String(format: "%.1f", totalDistance))")
             
             print("[COCKPIT] totalCO2 calculé: \(String(format: "%.2f", totalCO2)) kg")
+            print("[COCKPIT] totalDistance calculé: \(String(format: "%.1f", totalDistance)) km")
             print("[COCKPIT] ✅ Successfully calculated CO₂ for \(totalTrips) trips")
             
-            return (total: totalCO2, tripCount: totalTrips)
+            return (total: totalCO2, tripCount: totalTrips, distanceKm: totalDistance)
         } catch {
             print("[COCKPIT] ❌ Error fetching CO₂: \(error.localizedDescription)")
             throw error
         }
     }
     
-    func fetchPersonalTrips(startDate: String? = nil, endDate: String? = nil) async throws -> [Trip] {
-        print("[CO2] fetchPersonalTrips start")
+    func fetchPersonalCO2PreviousMonth() async throws -> (total: Double, tripCount: Int, distanceKm: Double) {
+        print("[COCKPIT] fetchPersonalCO2PreviousMonth start")
+        
+        let monthRange = getPreviousMonthRangeISO()
+        
+        print("[COCKPIT] Previous month period: \(monthRange.start) to \(monthRange.end)")
+        
+        do {
+            let trips = try await fetchPersonalTrips(startDate: monthRange.start, endDate: monthRange.end)
+            
+            let totalTrips = trips.count
+            let totalCO2 = trips.reduce(0.0) { sum, trip in
+                sum + (trip.co2_emissions_kg ?? 0.0)
+            }
+            let totalDistance = trips.reduce(0.0) { sum, trip in
+                sum + (trip.distance_km ?? 0.0)
+            }
+            
+            print("[COCKPIT] Previous month: trips=\(totalTrips) totalCO2=\(String(format: "%.2f", totalCO2)) distanceKm=\(String(format: "%.1f", totalDistance))")
+            print("[COCKPIT] ✅ Successfully calculated previous month CO₂")
+            
+            return (total: totalCO2, tripCount: totalTrips, distanceKm: totalDistance)
+        } catch {
+            print("[COCKPIT] ❌ Error fetching previous month CO₂: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    func fetchTripsByType(type: String, startDate: String? = nil, endDate: String? = nil) async throws -> [Trip] {
+        print("[TRIPS] fetchTripsByType start - type: \(type)")
         
         // Récupérer l'utilisateur courant
         let session = try await client.auth.session
         let userId = session.user.id
-        print("[CO2] User ID: \(userId)")
+        print("[TRIPS] User ID: \(userId)")
         
         // Requête Supabase avec jointure véhicule
         do {
@@ -105,7 +159,7 @@ final class TripService {
                 .from("trips")
                 .select("id, user_id, vehicle_id, trip_date, origin_address, destination_address, distance_km, co2_emissions_kg, transport_mode, type_trajet, created_at, vehicles(id, owner_id, registration, brand, model, energy, v7_emissions, consumption_per_100km)")
                 .eq("user_id", value: userId.uuidString)
-                .eq("type_trajet", value: "perso")
+                .eq("type_trajet", value: type)
             
             // Ajouter les filtres de date indépendamment (startDate et/ou endDate)
             if let startDate = startDate {
@@ -116,7 +170,6 @@ final class TripService {
             }
             
             // Récupérer les trips avec jointure véhicule
-            // Filtres communs: user_id et type_trajet = "perso" (identique à fetchPersonalCO2ThisMonth)
             var trips: [Trip] = try await query
                 .order("trip_date", ascending: false)
                 .order("created_at", ascending: false)
@@ -144,33 +197,16 @@ final class TripService {
                 return false
             }
             
-            print("[CO2] Trips loaded: \(trips.count)")
-            
-            // Log détaillé pour debug
-            var totalCO2: Double = 0.0
-            for trip in trips {
-                if let co2 = trip.co2_emissions_kg {
-                    totalCO2 += co2
-                    print("[CO2] Trip \(trip.id) → \(String(format: "%.2f", co2)) kg CO₂")
-                    if let vehicle = trip.vehicles {
-                        print("[CO2]   Vehicle: \(vehicle.brand ?? "") \(vehicle.model ?? "") (\(vehicle.registration ?? "N/A"))")
-                    }
-                }
-            }
-            
-            // Log debug avec range si fourni
-            if let startDate = startDate, let endDate = endDate {
-                print("[LIST_DEBUG] range=\(startDate)..\(endDate) count=\(trips.count) sumCO2=\(String(format: "%.2f", totalCO2))")
-            }
-            
-            print("[CO2] Total CO₂: \(String(format: "%.2f", totalCO2)) kg")
-            print("[CO2] ✅ Successfully fetched \(trips.count) personal trips")
-            
+            print("[TRIPS] Trips loaded: \(trips.count) for type: \(type)")
             return trips
         } catch {
-            print("[CO2] ❌ Error fetching personal trips: \(error.localizedDescription)")
+            print("[TRIPS] ❌ Error fetching trips by type: \(error.localizedDescription)")
             throw error
         }
+    }
+    
+    func fetchPersonalTrips(startDate: String? = nil, endDate: String? = nil) async throws -> [Trip] {
+        return try await fetchTripsByType(type: "perso", startDate: startDate, endDate: endDate)
     }
     
     func fetchTrips(limit: Int = 50) async throws -> [Trip] {

@@ -16,6 +16,11 @@ struct CarbyoColors {
     static let text = Color(hex: "0F172A")
     static let muted = Color(hex: "64748B")
     static let border = Color(hex: "E2E8F0")
+    
+    // Carbyo Fresh Palette (test)
+    static let freshOrange = Color(hex: "FF9440")
+    static let carbyoGreen = Color(hex: "00B876")
+    static let softGrey = Color.secondary
 }
 
 // MARK: - Corner Radius

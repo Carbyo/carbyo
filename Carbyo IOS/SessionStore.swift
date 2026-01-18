@@ -74,6 +74,7 @@ final class SessionStore: ObservableObject {
             }
         }
     }
+    @Published var hasVehicle: Bool = false
     @Published var invitationStatus: InvitationStatus = .pending {
         didSet {
             saveInvitationStatus()
@@ -106,7 +107,7 @@ final class SessionStore: ObservableObject {
             return false
         }
         
-        guard profile.vehicles.count >= 1 else {
+        guard hasVehicle else {
             return false
         }
         
